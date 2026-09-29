@@ -7,13 +7,9 @@ APP_HOME="${APP_HOME:-/home/app}"
 RELEASES_DIR="${RELEASES_DIR:-$APP_HOME/releases}"
 CURRENT_LINK="${CURRENT_LINK:-$APP_HOME/current}"
 ENV_FILE="${ENV_FILE:-$APP_HOME/public_html/.env.production}"
-APP_NAME="${APP_NAME:-sman1kraksaan}"
-HOSTNAME="${HOSTNAME:-0.0.0.0}"
-PORT="${PORT:-3000}"
-HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:$PORT/}"
 DOWNLOAD_URL="https://github.com/$REPOSITORY/releases/download/deployment-latest"
 
-for command in curl sha256sum tar pm2; do
+for command in curl sha256sum tar; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Required command not found: $command" >&2
     exit 1
@@ -38,7 +34,6 @@ fi
 temporary_dir="$(mktemp -d)"
 release_id="$(date -u +%Y%m%d%H%M%S)"
 release_dir="$RELEASES_DIR/$release_id"
-previous_release="$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)"
 
 cleanup() {
   rm -rf "$temporary_dir"
@@ -75,45 +70,6 @@ next_link="$APP_HOME/.current.$release_id"
 ln -s "$release_dir" "$next_link"
 mv -Tf "$next_link" "$CURRENT_LINK"
 
-export HOSTNAME PORT NODE_ENV=production
-
-restart_application() {
-  if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-    pm2 restart "$APP_NAME" --update-env
-  else
-    pm2 start "$CURRENT_LINK/server.js" \
-      --name "$APP_NAME" \
-      --cwd "$CURRENT_LINK" \
-      --time
-  fi
-}
-
-healthy=false
-if restart_application; then
-  for _ in {1..30}; do
-    if curl -fsS --max-time 3 "$HEALTHCHECK_URL" >/dev/null; then
-      healthy=true
-      break
-    fi
-    sleep 1
-  done
-fi
-
-if [[ "$healthy" != true ]]; then
-  echo "Health check failed; rolling back." >&2
-
-  if [[ -n "$previous_release" && -d "$previous_release" ]]; then
-    rollback_link="$APP_HOME/.current.rollback.$release_id"
-    ln -s "$previous_release" "$rollback_link"
-    mv -Tf "$rollback_link" "$CURRENT_LINK"
-    pm2 restart "$APP_NAME" --update-env || true
-  else
-    pm2 delete "$APP_NAME" || true
-  fi
-
-  rm -rf "$release_dir"
-  exit 1
-fi
-
-pm2 save
-echo "Deployment active: $release_dir"
+echo "Deployment prepared: $release_dir"
+echo "Current release: $CURRENT_LINK"
+echo "Restart the application from Webuzo to make it live."
