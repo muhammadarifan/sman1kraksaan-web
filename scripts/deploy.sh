@@ -38,6 +38,35 @@ cleanup() {
 }
 trap cleanup EXIT
 
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+# Remove carriage returns left by environment files edited with Windows line endings.
+OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
+OPENROUTER_API_KEY="${OPENROUTER_API_KEY%$'\r'}"
+export OPENROUTER_API_KEY
+
+if [[ -z "$OPENROUTER_API_KEY" ]]; then
+  echo "OPENROUTER_API_KEY is missing from $ENV_FILE" >&2
+  exit 1
+fi
+
+echo "Validating OpenRouter credentials..."
+openrouter_status="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+  "https://openrouter.ai/api/v1/auth/key" || true)"
+
+if [[ "$openrouter_status" == "401" || "$openrouter_status" == "403" ]]; then
+  echo "OpenRouter rejected OPENROUTER_API_KEY (HTTP $openrouter_status)." >&2
+  exit 1
+fi
+
+if [[ "$openrouter_status" != "200" ]]; then
+  echo "Warning: OpenRouter credential check returned HTTP ${openrouter_status:-000}." >&2
+fi
+
 echo "Downloading deployment artifact..."
 curl -fsSL --retry 3 \
   "$DOWNLOAD_URL/deployment.tar.gz" \
@@ -58,11 +87,6 @@ if [[ ! -f "$DEPLOY_DIR/server.js" ]]; then
   echo "Invalid deployment: server.js is missing." >&2
   exit 1
 fi
-
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
 
 echo "Restarting PM2 application: $APP_NAME"
 pm2 restart "$APP_NAME" --update-env
