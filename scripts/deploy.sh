@@ -16,11 +16,6 @@ for command in curl sha256sum tar; do
   fi
 done
 
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Environment file not found: $ENV_FILE" >&2
-  exit 1
-fi
-
 mkdir -p "$RELEASES_DIR"
 
 if command -v flock >/dev/null 2>&1; then
@@ -63,8 +58,12 @@ if [[ ! -f "$release_dir/server.js" ]]; then
   exit 1
 fi
 
-cp "$ENV_FILE" "$release_dir/.env.production"
-chmod 600 "$release_dir/.env.production"
+if [[ -f "$ENV_FILE" ]]; then
+  cp "$ENV_FILE" "$release_dir/.env.production"
+  chmod 600 "$release_dir/.env.production"
+else
+  echo "Environment file not found; using variables configured in Webuzo."
+fi
 
 next_link="$APP_HOME/.current.$release_id"
 ln -s "$release_dir" "$next_link"
