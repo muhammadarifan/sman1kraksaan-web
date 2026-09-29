@@ -5,14 +5,21 @@ set -Eeuo pipefail
 REPOSITORY="${REPOSITORY:-avoocreator/sman1kraksaan-web}"
 APP_HOME="${APP_HOME:-/home/app}"
 DEPLOY_DIR="${DEPLOY_DIR:-$APP_HOME/public_html}"
+ENV_FILE="${ENV_FILE:-$DEPLOY_DIR/.env.production}"
+APP_NAME="${APP_NAME:-sman1kraksaan}"
 DOWNLOAD_URL="https://github.com/$REPOSITORY/releases/download/deployment-latest"
 
-for command in curl sha256sum tar; do
+for command in curl sha256sum tar pm2; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Required command not found: $command" >&2
     exit 1
   fi
 done
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Environment file not found: $ENV_FILE" >&2
+  exit 1
+fi
 
 mkdir -p "$DEPLOY_DIR"
 
@@ -52,5 +59,12 @@ if [[ ! -f "$DEPLOY_DIR/server.js" ]]; then
   exit 1
 fi
 
-echo "Deployment prepared: $DEPLOY_DIR"
-echo "Restart the application from Webuzo to make it live."
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+echo "Restarting PM2 application: $APP_NAME"
+pm2 restart "$APP_NAME" --update-env
+
+echo "Deployment active: $DEPLOY_DIR"
